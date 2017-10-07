@@ -3,7 +3,7 @@
  *
  *  Created on: Aug 12, 2015
  *      Author: jconvertino
- * 
+ *
     Copyright (C) 2015 John Convertino
 
     This program is free software; you can redistribute it and/or modify
@@ -56,7 +56,7 @@ typedef int (*producer)(volatile uint8_t *);
 //setup twi to respond to a address, allows handles to be use fnptr_consumer for receiving data,
 //and fnptr_producer for sending data. Use NULL for no handlers.
 //disable or enable response to gcall (receive only!)
-void twiInit(uint8_t address, flag gcall, consumer fnptr_consumer, producer fnptr_producer);
+void initTwi(uint8_t address, flag gcall, consumer fnptr_consumer, producer fnptr_producer);
 
 //create a buffer with data, and send that buffer to the address.
 int twiSend(uint8_t *data, size_t size);

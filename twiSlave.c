@@ -3,7 +3,7 @@
  *
  *  Created on: Aug 12, 2015
  *      Author: jconvertino
- * 
+ *
     Copyright (C) 2015 John Convertino
 
     This program is free software; you can redistribute it and/or modify
@@ -45,72 +45,25 @@ struct
 	producer fnptr_producer;
 } twi;
 
+//helper functions
 //functions for twi control register setup and clearing interrupt
-//connect to bus and listen
-static inline void twiEnable()
-{
-	TWCR = (1 << TWEA) | (1 << TWEN);
-}
-
-//can be used for pulse stretching to give slave more time
-static inline void twiStretch()
-{
-	TWCR = (1 << TWEA) | (1 << TWINT) | (1 << TWEN) | (1 << TWIE) | (1 << TWSTO);
-}
-
-static inline void twiConnect()
-{
-	TWCR =  (1 << TWEA) | (1 << TWINT) | (1 << TWEN) | (1 << TWIE);
-}
-
-//disconnect from bus
-static inline void twiDisconnect()
-{
-	TWCR = (1 << TWEA) | (1 << TWINT) | (1 << TWEN);
-}
-
-//done but stay connected
-static inline void twiFinished()
-{
-	TWCR = (1 << TWEA) | (1 << TWINT) | (1 << TWEN) | (1 << TWIE);
-}
-
-
-//send ack pulse
-static inline void twiACK()
-{
-	TWCR = (1 << TWEA) | (1 << TWINT) | (1 << TWEN) | (1 << TWIE);
-}
-
-//send nack pulse
-static inline void twiNACK()
-{
-	TWCR = (1 << TWINT) | (1 << TWEN) | (1 << TWIE);
-}
-
-static inline void twiAction(int value)
-{
-	switch(value)
-	{
-	case TWI_NACK:
-		twiNACK();
-		break;
-	case TWI_FINISHED:
-		twiFinished();
-		break;
-	case TWI_DISCONNECT:
-		twiDisconnect();
-		break;
-	default:
-		twiACK();
-		break;
-	}
-}
-
+static inline void twiEnable();
+static inline void twiStretch();
+static inline void twiConnect();
+static inline void twiDisconnect();
+static inline void twiFinished();
+static inline void twiACK();
+static inline void twiNACK();
+static inline void twiAction(int value);
 
 //init twi info, calculate scl_speed for TWBR, also enable interrupts
-void twiInit(uint8_t address, flag gcall, consumer fnptr_consumer, producer fnptr_producer)
+void initTwi(uint8_t address, flag gcall, consumer fnptr_consumer, producer fnptr_producer)
 {
+	uint8_t tmpSREG = 0;
+
+	tmpSREG = SREG;
+	cli();
+
 	TWSR = 0;
 	TWCR = 0;
 	TWAR = 0;
@@ -137,12 +90,17 @@ void twiInit(uint8_t address, flag gcall, consumer fnptr_consumer, producer fnpt
 
 	twiEnable();
 
+	SREG = tmpSREG;
+
 	sei();
 }
 
 //write to buffer for twi data send
 int twiSend(uint8_t *data, size_t size)
 {
+	uint8_t tmpSREG = 0;
+
+	tmpSREG = SREG;
 
 	if(twiBusyCk())
 	{
@@ -159,12 +117,15 @@ int twiSend(uint8_t *data, size_t size)
 		return EXIT_DATA_LRG;
 	}
 
+	cli();
 	//deep copy data
 	memcpy(twi.bufferData, data, size);
 
 	twi.bufferSize = size;
 
 	twi.bufferIndex = 0;
+
+	SREG = tmpSREG;
 
 	twiConnect();
 
@@ -174,6 +135,10 @@ int twiSend(uint8_t *data, size_t size)
 //read from buffer after twi has sent address and built up data
 int twiRecv(uint8_t *data, size_t size)
 {
+	uint8_t tmpSREG = 0;
+
+	tmpSREG = SREG;
+
 	if(twiBusyCk())
 	{
 		return EXIT_BUSY;
@@ -189,11 +154,17 @@ int twiRecv(uint8_t *data, size_t size)
 		return EXIT_DATA_LRG;
 	}
 
+	cli();
+
 	twi.bufferSize = size;
+
+	SREG = tmpSREG;
 
 	twiConnect();
 
 	while(twiBusyCk());
+
+	cli();
 
 	if(twi.bufferIndex != twi.bufferSize)
 	{
@@ -203,20 +174,38 @@ int twiRecv(uint8_t *data, size_t size)
 	//deep copy
 	memcpy(data, twi.bufferData, size);
 
+	SREG = tmpSREG;
+
 	return EXIT_SUCCESS;
 }
 
 //begin transmission using handler
 void twiBeginHandlerTrans()
 {
+	uint8_t tmpSREG = 0;
+
+	tmpSREG = SREG;
+	cli();
+
 	twi.handlerEnable = enabled;
+
+	SREG = tmpSREG;
+
 	twiConnect();
 }
 
 //stop handler, allow ISR to end transmission correctly
 void twiStopHandlerTrans()
 {
+	uint8_t tmpSREG = 0;
+
+	tmpSREG = SREG;
+	cli();
+
 	twi.handlerEnable = disabled;
+
+	SREG = tmpSREG;
+	
 	twiDisconnect();
 }
 
@@ -308,6 +297,69 @@ ISR(TWI_vect)
 	case TW_SR_ARB_LOST_GCALL_ACK:
 		twi.lastError = twi.lastStatus;
 		twiDisconnect();
+		break;
+	}
+}
+
+//helper functions
+//functions for twi control register setup and clearing interrupt
+//connect to bus and listen
+static inline void twiEnable()
+{
+	TWCR = (1 << TWEA) | (1 << TWEN);
+}
+
+//can be used for pulse stretching to give slave more time
+static inline void twiStretch()
+{
+	TWCR = (1 << TWEA) | (1 << TWINT) | (1 << TWEN) | (1 << TWIE) | (1 << TWSTO);
+}
+
+static inline void twiConnect()
+{
+	TWCR =  (1 << TWEA) | (1 << TWINT) | (1 << TWEN) | (1 << TWIE);
+}
+
+//disconnect from bus
+static inline void twiDisconnect()
+{
+	TWCR = (1 << TWEA) | (1 << TWINT) | (1 << TWEN);
+}
+
+//done but stay connected
+static inline void twiFinished()
+{
+	TWCR = (1 << TWEA) | (1 << TWINT) | (1 << TWEN) | (1 << TWIE);
+}
+
+
+//send ack pulse
+static inline void twiACK()
+{
+	TWCR = (1 << TWEA) | (1 << TWINT) | (1 << TWEN) | (1 << TWIE);
+}
+
+//send nack pulse
+static inline void twiNACK()
+{
+	TWCR = (1 << TWINT) | (1 << TWEN) | (1 << TWIE);
+}
+
+static inline void twiAction(int value)
+{
+	switch(value)
+	{
+	case TWI_NACK:
+		twiNACK();
+		break;
+	case TWI_FINISHED:
+		twiFinished();
+		break;
+	case TWI_DISCONNECT:
+		twiDisconnect();
+		break;
+	default:
+		twiACK();
 		break;
 	}
 }
